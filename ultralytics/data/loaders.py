@@ -342,7 +342,13 @@ class LoadImages:
         else:
             # Read image
             self.count += 1
-            im0 = cv2.imread(path)  # BGR
+
+            if path.lower.endswith(".npy"):
+                im0 = np.load(path)
+            elif path.lower.endswith(".npz"):
+                im0 = np.load(path)['data']
+            else:
+                im0 = cv2.imread(path)  # BGR
             if im0 is None:
                 raise FileNotFoundError(f"Image Not Found {path}")
             s = f"image {self.count}/{self.nf} {path}: "

@@ -609,9 +609,12 @@ class RandomHSV:
         The modified image replaces the original image in the input 'labels' dict.
         """
         img = labels["img"]
-        if self.hgain or self.sgain or self.vgain:
+        if (self.hgain or self.sgain or self.vgain):
             r = np.random.uniform(-1, 1, 3) * [self.hgain, self.sgain, self.vgain] + 1  # random gains
-            hue, sat, val = cv2.split(cv2.cvtColor(img, cv2.COLOR_BGR2HSV))
+            
+            hue1, sat1, val1 = cv2.split(cv2.cvtColor(img[:,:,:3], cv2.COLOR_BGR2HSV))
+            hue2, sat2, val2 = cv2.split(cv2.cvtColor(img[:,:,3:], cv2.COLOR_BGR2HSV))
+
             dtype = img.dtype  # uint8
 
             x = np.arange(0, 256, dtype=r.dtype)
@@ -619,8 +622,13 @@ class RandomHSV:
             lut_sat = np.clip(x * r[1], 0, 255).astype(dtype)
             lut_val = np.clip(x * r[2], 0, 255).astype(dtype)
 
-            im_hsv = cv2.merge((cv2.LUT(hue, lut_hue), cv2.LUT(sat, lut_sat), cv2.LUT(val, lut_val)))
-            cv2.cvtColor(im_hsv, cv2.COLOR_HSV2BGR, dst=img)  # no return needed
+            im_hsv1 = cv2.merge((cv2.LUT(hue1, lut_hue), cv2.LUT(sat1, lut_sat), cv2.LUT(val1, lut_val)))
+            im_hsv2 = cv2.merge((cv2.LUT(hue2, lut_hue), cv2.LUT(sat2, lut_sat), cv2.LUT(val2, lut_val)))
+            im_hsv1 = cv2.cvtColor(im_hsv1, cv2.COLOR_HSV2BGR)
+            im_hsv2 = cv2.cvtColor(im_hsv2, cv2.COLOR_HSV2BGR)
+
+            img = np.concatenate((im_hsv1, im_hsv2), axis=2)
+
         return labels
 
 
@@ -726,10 +734,10 @@ class LetterBox:
         if shape[::-1] != new_unpad:  # resize
             img = cv2.resize(img, new_unpad, interpolation=cv2.INTER_LINEAR)
         top, bottom = int(round(dh - 0.1)) if self.center else 0, int(round(dh + 0.1))
-        left, right = int(round(dw - 0.1)) if self.center else 0, int(round(dw + 0.1))
-        img = cv2.copyMakeBorder(
-            img, top, bottom, left, right, cv2.BORDER_CONSTANT, value=(114, 114, 114)
-        )  # add border
+        left, right = int(round(dw - 0.1)) if self.center else 0, int(round(dw + 0.1))       
+        img_new = np.full((img.shape[0]+top+bottom,img.shape[1]+left+right, img.shape[2]), fill_value=114, dtype=np.uint8)
+        img_new[top:top+img.shape[0],left:left+img.shape[1]] = img
+        img = img_new
         if labels.get("ratio_pad"):
             labels["ratio_pad"] = (labels["ratio_pad"], (left, top))  # for evaluation
 
@@ -792,7 +800,7 @@ class CopyPaste:
         if self.p and len(instances.segments):
             n = len(instances)
             _, w, _ = im.shape  # height, width, channels
-            im_new = np.zeros(im.shape, np.uint8)
+            im_new = np.zeros(im.shape[:2], np.uint8)
 
             # Calculate ioa first then select indexes randomly
             ins_flip = deepcopy(instances)
@@ -804,7 +812,7 @@ class CopyPaste:
             for j in random.sample(list(indexes), k=round(self.p * n)):
                 cls = np.concatenate((cls, cls[[j]]), axis=0)
                 instances = Instances.concatenate((instances, ins_flip[[j]]), axis=0)
-                cv2.drawContours(im_new, instances.segments[[j]].astype(np.int32), -1, (1, 1, 1), cv2.FILLED)
+                cv2.drawContours(im_new, instances.segments[[j]].astype(np.int32), -1, 1, cv2.FILLED)
 
             result = cv2.flip(im, 1)  # augment segments (flip left-right)
             i = cv2.flip(im_new, 1).astype(bool)
